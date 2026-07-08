@@ -36,7 +36,7 @@ app.use(
       "http://localhost:8003",
       "http://localhost:5173",
       "https://amapolosara.com",
-      "https://www.amapolosara.com",
+      "https://polosaranac.netlify.app",
     ], // 👈 Allow frontend origin
     credentials: true, // 👈 REQUIRED for cookies
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
