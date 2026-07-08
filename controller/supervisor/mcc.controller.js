@@ -1,0 +1,92 @@
+import MccRecord from "../../models/supervisor/mccRecord.js";
+
+export const createMccRecord = async (req, res) => {
+  try {
+    console.log("BODY:", req.body);
+    console.log("FILE:", req.file);
+
+    const { supervisorName, cubeNumber } = req.body;
+    const contactNumber = req.body.contactNumber || req.body.phoneNo;
+
+    const wetWasteKg = req.body.wetWasteKg !== undefined && req.body.wetWasteKg !== "" ? Number(req.body.wetWasteKg) : 0;
+    const dryWasteKg = req.body.dryWasteKg !== undefined && req.body.dryWasteKg !== "" ? Number(req.body.dryWasteKg) : 0;
+
+    if (
+      !supervisorName ||
+      !contactNumber ||
+      !cubeNumber ||
+      Number.isNaN(wetWasteKg) ||
+      Number.isNaN(dryWasteKg) ||
+      wetWasteKg < 0 ||
+      dryWasteKg < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Supervisor, contact, cube number, and valid non-negative waste values are required",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Image is required",
+      });
+    }
+
+    const record = await MccRecord.create({
+      supervisorName,
+      contactNumber,
+      cubeNumber: Number(cubeNumber),
+      wetWasteKg,
+      dryWasteKg,
+      image: req.file.path,
+      status: req.body.status || "Stored",
+      dateSubmitted: req.body.dateSubmitted || new Date().toISOString(),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "MCC record created successfully",
+      data: record,
+    });
+  } catch (error) {
+    console.log("CREATE MCC ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create MCC record",
+      error: error.message,
+    });
+  }
+};
+
+export const getAllMccRecords = async (req, res) => {
+  try {
+    const records = await MccRecord.find().sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: records,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch MCC records",
+      error: error.message,
+    });
+  }
+};
+export const resetMccRecords = async (req, res) => {
+  try {
+    await MccRecord.deleteMany({});
+    res.status(200).json({
+      success: true,
+      message: "MCC reset successfully ✅",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "MCC reset failed ❌",
+      error: error.message,
+    });
+  }
+};

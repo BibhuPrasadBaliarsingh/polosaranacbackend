@@ -1,0 +1,90 @@
+import { initializeApp, cert } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
+import fs from "fs";
+import path from "path";
+
+let fcmInitialized = false;
+
+// Attempt to initialize Firebase Admin SDK
+try {
+  const serviceAccountPath = path.join(process.cwd(), "firebase-service-account.json");
+  
+  if (fs.existsSync(serviceAccountPath)) {
+    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+    initializeApp({
+      credential: cert(serviceAccount),
+    });
+    fcmInitialized = true;
+    console.log("🔥 Firebase Admin SDK initialized successfully.");
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    initializeApp({
+      credential: cert(serviceAccount),
+    });
+    fcmInitialized = true;
+    console.log("🔥 Firebase Admin SDK initialized from environment variable.");
+  } else {
+    console.warn(
+      "⚠️ Firebase service account credential file (firebase-service-account.json) not found.\n" +
+      "⚠️ Push notifications will fall back to MOCK mode."
+    );
+  }
+} catch (error) {
+  console.error("❌ Failed to initialize Firebase Admin SDK:", error.message);
+  console.warn("⚠️ Push notifications will fall back to MOCK mode.");
+}
+
+/**
+ * Sends a push notification to a list of FCM tokens.
+ * Falls back to mock logging if FCM is not initialized.
+ * 
+ * @param {string[]} tokens - Array of FCM registration tokens.
+ * @param {object} payload - Notification payload { title, body, data }
+ */
+export const sendPushNotification = async (tokens, payload) => {
+  if (!tokens || tokens.length === 0) return;
+
+  const uniqueTokens = [...new Set(tokens.filter(Boolean))];
+  if (uniqueTokens.length === 0) return;
+
+  const { title, body, data } = payload;
+
+  if (fcmInitialized) {
+    try {
+      const message = {
+        notification: {
+          title,
+          body,
+        },
+        data: data ? Object.keys(data).reduce((acc, key) => {
+          acc[key] = String(data[key]);
+          return acc;
+        }, {}) : {},
+        tokens: uniqueTokens,
+      };
+
+      const response = await getMessaging().sendEachForMulticast(message);
+      console.log(`Successfully sent push notification to ${response.successCount} / ${uniqueTokens.length} devices.`);
+      
+      // If some tokens failed, we can log them (e.g. expired tokens)
+      if (response.failureCount > 0) {
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            console.warn(`Token: ${uniqueTokens[idx]} failed with error: ${resp.error?.message}`);
+          }
+        });
+      }
+      return response;
+    } catch (error) {
+      console.error("❌ Error sending multicast FCM push notification:", error.message);
+    }
+  } else {
+    // MOCK MODE
+    console.log(
+      `📢 [MOCK FCM PUSH] Sent notification to ${uniqueTokens.length} devices.\n` +
+      `📢 Title: "${title}"\n` +
+      `📢 Body: "${body}"\n` +
+      `📢 Data: ${JSON.stringify(data || {})}`
+    );
+  }
+};
