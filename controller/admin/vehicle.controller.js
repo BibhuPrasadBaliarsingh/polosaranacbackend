@@ -409,127 +409,106 @@ const processWardEntryNotifications = async (trackingList = []) => {
   }
 };
 
-// export const getTrackings = async (req, res) => {
-//   try {
-//     const loginPayload = {
-//       username: process.env.BLACKBUCK_USERNAME,
-//       password: process.env.BLACKBUCK_PASSWORD,
-//       login_type: "USERNAME",
-//       tenant: "GPS_SHIPPER",
-//       client_name: "GPS_FLEET_PORTAL",
-//     };
-
-//     // Step 1: Login
-//     const loginResponse = await axios.post(
-//       "https://partner-api.blackbuck.com/authentication/v1/login",
-//       loginPayload,
-//       {
-//         headers: {
-//           "content-type": "application/json",
-//           "x-aaa-enabled": "true",
-//         },
-//       },
-//     );
-
-//     const token = loginResponse?.data?.access_token;
-//     const tenantIdentifier =
-//       loginResponse?.data?.tenant_identifier || "7982061";
-//     const tenantType = loginResponse?.data?.tenant_type || "GPS_SHIPPER";
-
-//     if (!token) {
-//       return res.status(401).json({
-//         success: false,
-//         message: "Blackbuck token not received",
-//       });
-//     }
-
-//     // Step 2: Fetch tracking data
-//     const trackingResponse = await axios.get(
-//       "https://api-fms.blackbuck.com/fmsiot/api/shipper/v2/tracking/list?page_number=0&page_size=50",
-//       {
-//         headers: {
-//           authorization: `Token ${token}`,
-//           "content-type": "application/json",
-//           "x-aaa-enabled": "true",
-//           "x-tenant-identifier": tenantIdentifier,
-//           "x-tenant-type": tenantType,
-//         },
-//       },
-//     );
-
-//     const allData = trackingResponse.data;
-
-//     const filteredList = (allData.list || []).filter(
-//       (item) =>
-//         item.truck_no !== "OD07Z8706" &&
-//         item.truck_no !== "OD07Z8705" &&
-//         item.truck_number !== "OD07Z8706" &&
-//         item.truck_number !== "OD07Z8705",
-//     );
-
-//     await processWardEntryNotifications(filteredList);
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Tracking data fetched successfully",
-//       data: {
-//         ...allData,
-//         list: filteredList,
-//         total_count: filteredList.length,
-//       },
-//     });
-//   } catch (error) {
-//     console.error(
-//       "Blackbuck tracking error:",
-//       error?.response?.data || error.message,
-//     );
-
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to fetch tracking data from Blackbuck",
-//       error: error?.response?.data || error.message,
-//     });
-//   }
-// };
-
 export const getTrackings = async (req, res) => {
   try {
-    const states = await VehicleWardState.find({});
-    
-    // Simulate some dummy vehicles if none exist in state yet
-    const dummyVehicles = states.length > 0 ? states : [
-      { vehicleNumber: "OD07A1111", lastLat: 19.740, lastLng: 84.810, currentWard: "", lastSeenAt: new Date() },
-      { vehicleNumber: "OD07B2222", lastLat: 19.742, lastLng: 84.812, currentWard: "", lastSeenAt: new Date() }
-    ];
+    const loginPayload = {
+      username: process.env.BLACKBUCK_USERNAME,
+      password: process.env.BLACKBUCK_PASSWORD,
+      login_type: "USERNAME",
+      tenant: "GPS_SHIPPER",
+      client_name: "GPS_FLEET_PORTAL",
+    };
 
-    const list = dummyVehicles.map((state) => ({
-      truck_no: state.vehicleNumber,
-      truck_number: state.vehicleNumber,
-      lat: state.lastLat || 19.74,
-      lng: state.lastLng || 84.81,
-      device_timestamp: state.lastSeenAt || new Date().toISOString(),
-      currentWard: state.currentWard,
-      speed: 0,
-      address: state.currentWard || "Unknown",
-    }));
+    // Step 1: Login
+    const loginResponse = await axios.post(
+      "https://partner-api.blackbuck.com/authentication/v1/login",
+      loginPayload,
+      {
+        headers: {
+          "content-type": "application/json",
+          "x-aaa-enabled": "true",
+        },
+      },
+    );
+
+    const token = loginResponse?.data?.access_token;
+    const tenantIdentifier =
+      loginResponse?.data?.tenant_identifier || "7982061";
+    const tenantType = loginResponse?.data?.tenant_type || "GPS_SHIPPER";
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Blackbuck token not received",
+      });
+    }
+
+    // Step 2: Fetch tracking data
+    const trackingResponse = await axios.get(
+      "https://api-fms.blackbuck.com/fmsiot/api/shipper/v2/tracking/list?page_number=0&page_size=50",
+      {
+        headers: {
+          authorization: `Token ${token}`,
+          "content-type": "application/json",
+          "x-aaa-enabled": "true",
+          "x-tenant-identifier": tenantIdentifier,
+          "x-tenant-type": tenantType,
+        },
+      },
+    );
+
+    const allData = trackingResponse.data;
+
+    const filteredList = (allData.list || []).filter(
+      (item) =>
+        item.truck_no !== "OD07Z8706" &&
+        item.truck_no !== "OD07Z8705" &&
+        item.truck_number !== "OD07Z8706" &&
+        item.truck_number !== "OD07Z8705",
+    );
+
+    await processWardEntryNotifications(filteredList);
+
+    // Fetch our own DB states to inject currentWard if needed
+    const states = await VehicleWardState.find({});
+    const stateMap = states.reduce((acc, s) => {
+      acc[s.vehicleNumber] = s;
+      return acc;
+    }, {});
+
+    const enrichedList = filteredList.map(item => {
+      const vNum = String(item.truck_number || item.truck_no).trim();
+      const dbState = stateMap[vNum];
+      return {
+        ...item,
+        currentWard: dbState ? dbState.currentWard : getTrackingWardName(item)
+      };
+    });
 
     res.status(200).json({
       success: true,
-      message: "Simulated tracking data",
+      message: "Tracking data fetched successfully",
       data: {
-        list,
-        total_count: list.length,
+        ...allData,
+        list: enrichedList,
+        total_count: enrichedList.length,
       },
     });
   } catch (error) {
-    console.error("GetTrackings error:", error);
+    console.error(
+      "Blackbuck tracking error:",
+      error?.response?.data || error.message,
+    );
+
     res.status(500).json({
       success: false,
-      message: "Failed",
-      error: error.message || String(error),
+      message: "Failed to fetch tracking data from Blackbuck",
+      error: error?.response?.data || error.message,
     });
   }
 };
+
+
 
 // Haversine distance in meters
 const getDistance = (lat1, lon1, lat2, lon2) => {
