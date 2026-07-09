@@ -2,6 +2,7 @@ import { initializeApp, cert } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import fs from "fs";
 import path from "path";
+import FcmToken from "../models/citizen/fcmToken.model.js";
 
 let fcmInitialized = false;
 
@@ -66,13 +67,33 @@ export const sendPushNotification = async (tokens, payload) => {
       const response = await getMessaging().sendEachForMulticast(message);
       console.log(`Successfully sent push notification to ${response.successCount} / ${uniqueTokens.length} devices.`);
       
-      // If some tokens failed, we can log them (e.g. expired tokens)
+      // If some tokens failed, we can log them (e.g. expired tokens) and delete stale ones from database
       if (response.failureCount > 0) {
+        const failedTokens = [];
         response.responses.forEach((resp, idx) => {
           if (!resp.success) {
-            console.warn(`Token: ${uniqueTokens[idx]} failed with error: ${resp.error?.message}`);
+            const token = uniqueTokens[idx];
+            const error = resp.error;
+            console.warn(`Token: ${token} failed with error: ${error?.message} (code: ${error?.code})`);
+
+            // Check if the error indicates that the token is invalid/expired
+            if (
+              error?.code === "messaging/invalid-registration-token" ||
+              error?.code === "messaging/registration-token-not-registered"
+            ) {
+              failedTokens.push(token);
+            }
           }
         });
+
+        if (failedTokens.length > 0) {
+          try {
+            const deleteResult = await FcmToken.deleteMany({ token: { $in: failedTokens } });
+            console.log(`🧹 Deleted ${deleteResult.deletedCount} stale FCM token(s) from database.`);
+          } catch (dbError) {
+            console.error("❌ Failed to delete stale FCM tokens from database:", dbError.message);
+          }
+        }
       }
       return response;
     } catch (error) {
