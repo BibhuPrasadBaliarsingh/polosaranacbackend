@@ -52,10 +52,23 @@ export const sendPushNotification = async (tokens, payload) => {
 
   if (fcmInitialized) {
     try {
+      console.log(`✔ [FCM Server] Creating payload for notification: "${title}"`);
       const message = {
         notification: {
           title,
           body,
+        },
+        webpush: {
+          notification: {
+            icon: "/image.jpg",
+            badge: "/image.jpg",
+            clickAction: "https://polosaranac.netlify.app",
+            requireInteraction: true,
+            vibrate: [200, 100, 200],
+          },
+          fcmOptions: {
+            link: "https://polosaranac.netlify.app",
+          },
         },
         data: data ? Object.keys(data).reduce((acc, key) => {
           acc[key] = String(data[key]);
@@ -63,6 +76,7 @@ export const sendPushNotification = async (tokens, payload) => {
         }, {}) : {},
         tokens: uniqueTokens,
       };
+      console.log("✔ [FCM Server] Payload successfully created:", JSON.stringify(message, null, 2));
 
       const response = await getMessaging().sendEachForMulticast(message);
       console.log(`Successfully sent push notification to ${response.successCount} / ${uniqueTokens.length} devices.`);

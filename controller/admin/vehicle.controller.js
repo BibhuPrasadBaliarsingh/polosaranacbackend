@@ -386,10 +386,12 @@ const processWardEntryNotifications = async (trackingList = []) => {
 
     if (citizensToNotify.length > 0) {
       try {
+        console.log(`✔ [FCM Server] Found ${citizensToNotify.length} citizen(s) in ward ${currentWard} to notify.`);
         const tokensDoc = await FcmToken.find({
           citizen: { $in: citizensToNotify },
         });
         const tokens = tokensDoc.map((t) => t.token);
+        console.log(`✔ [FCM Server] Found ${tokens.length} active FCM token(s) for these citizens.`);
 
         if (tokens.length > 0) {
           await sendPushNotification(tokens, {
@@ -613,10 +615,12 @@ export const manualAssignWard = async (req, res) => {
 
       if (citizensToNotify.length > 0) {
         try {
+          console.log(`✔ [FCM Server] Found ${citizensToNotify.length} citizen(s) in ward ${wardName} to notify (manual assignment).`);
           const tokensDoc = await FcmToken.find({
             citizen: { $in: citizensToNotify },
           });
           const tokens = tokensDoc.map((t) => t.token);
+          console.log(`✔ [FCM Server] Found ${tokens.length} active FCM token(s) for these citizens.`);
 
           if (tokens.length > 0) {
             await sendPushNotification(tokens, {
